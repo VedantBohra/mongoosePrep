@@ -1,6 +1,6 @@
-# 🟢 Easy Level – MongoDB + Mongoose CRUD
+# 🟢 Medium Level – MongoDB + Mongoose CRUD
 
-This section covers the basics of **Mongoose schemas, CRUD operations, and timestamps**.
+This section covers the intermediate level of **Relationships, aggregation pipeline, indexing for faster queries,and pagination**.
 
 ---
 

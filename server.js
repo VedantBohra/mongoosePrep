@@ -3,6 +3,10 @@ const connect = require('./db')
 const User = require('./schemas/User')
 const Book = require('./schemas/Book')
 const Post = require('./schemas/Post') 
+const Student = require('./schemas/Student')
+const Courses = require('./schemas/Courses')
+const User2 = require('./schemas/User2')
+const Sales = require('./schemas/Sales')
 
 const app = express()
 connect()
@@ -66,15 +70,106 @@ app.post('/post' , async (req,res) => {
     const post = req.body
     
     const newPost = await Post.create(post)
-    return res.status(200).json({msg: "Post inserted" , post}) 
+    return res.status(200).json({msg: "Post inserted" , newPost}) 
 })
 
-app.get('/post' , async (req,res) => {
-    const post = await Post.findById("68b59410434be935b791e4e4")
+// Created One to many relationship from One user to many post and user can be accessed from any post
 
-    const createdAt = post.createdAt
-    const updatedAt = post.updatedAt    
-    return res.status(200).json({msg: "Here is your Post" , timeStamps: {createdAt , updatedAt}}) 
+app.get('/post' , async (req,res) => {
+    // .populate() does the aggregation pipeline use by $lookup to get the user from the User ObjectId like joins in SQL
+    // Basically {include : {user : true}} in prisma for any message which under the hood uses joins
+    // Here .populate() act as a wrapper for $lookup of user within post through postID
+    const post = await Post.findById("68b5f6e2f8a45f05a28caa89").populate("user")
+  
+    return res.status(200).json({msg: "Here is your Post" , post}) 
+})
+
+// student and courses many to many relationship
+app.post('/student' , async (req , res) => {
+    const studentBody = req.body
+
+    const student = await Student.create(studentBody)
+    return res.status(200).json({msg: "New student enrolled" , student})
+})
+
+app.post('/selectCourse' , async (req , res) => {
+    // when a student select a course
+    const {courseID , studentID} = req.body
+    const course = await Courses.findByIdAndUpdate(courseID ,
+         {$addToSet : {student : studentID}},
+         {new: true}
+        )
+    
+    const updatedStudent = await Student.findByIdAndUpdate(studentID , 
+        {$addToSet : {courses: courseID}},
+        {new: true}
+    )
+    return res.status(200).json({msg: "New student enrolled to course" , course , updatedStudent})
+})
+
+app.post('/course' , async (req , res) => {
+    const courseBody = req.body
+
+    const course = await Courses.create(courseBody)
+    return res.status(200).json({msg: "New course enrolled" , course})
+})
+
+app.get('/course/:id' , async(req, res) => {
+    const courseID = req.params.id
+    const course = await Courses.findById(courseID).populate("student")
+
+    return res.status(200).json({msg: "Course data" , course})
+})
+
+app.get('/student/:id' , async(req , res) => {
+    const studentID = req.params.id
+    const student = await Student.findById(studentID).populate("courses")
+
+    return res.status(200).json({msg: "Student data" , student})
+})
+
+// User2 schema to have email as a indexed field for faster query
+app.post('/User2' , async (req , res) => {
+    const user = req.body
+    const newUser = await User2.create(user)
+
+    return res.status(200).json({msg: "User2 created" , newUser})
+})
+
+app.get('/User2' , async(req , res) => {
+    const email = req.query.email
+
+    const user = await User2.find({email}).explain("executionStats")
+
+    return res.json({msg: "User found" , user})
+})
+
+app.post('/sales' , async (req , res) => {
+    const sale = req.body
+    const newSale = await Sales.create(sale)
+
+    return res.status(200).json({msg: "Sale is successful" , newSale})
+})
+
+// aggregation pipeline to get the total sales per region
+app.get('/getSale/:region' , async(req , res) => {
+    // retrieving data for sales per region
+    const {region} = req.params
+    const totalSalesPerRegion = await Sales.aggregate([
+        {$match: {region}}, // match acts like a find within aggregation pipeline
+        {$group: {_id: '$region' , total: {$sum : '$amount'}}}, //when docs fields used as values of object here we write them like '$region'
+    ])
+
+    return res.status(200).json({msg: "Total sales have been done" , totalSalesPerRegion})
+})
+
+// pagination in server side with mongoose .limit() and .skip()
+app.get('/paginatedPost/:userID' , async(req , res) => {
+    const {page} = req.query
+    const userID = req.params.userID
+    const post = await Post.find({user: userID}).limit(1).skip(page).populate("user")
+
+    return res.status(200).json({msg: "Post found" , post})
 })
 
 app.listen(3000 , () => {
