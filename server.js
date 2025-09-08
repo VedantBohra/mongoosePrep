@@ -6,7 +6,13 @@ const Post = require('./schemas/Post')
 const Student = require('./schemas/Student')
 const Courses = require('./schemas/Courses')
 const User2 = require('./schemas/User2')
+const Order = require('./schemas/Order')
 const Sales = require('./schemas/Sales')
+const orderitems = require('./schemas/OrderItems')
+const Message = require('./schemas/Message')
+const MoneyUsers = require('./schemas/MoneyUsers')
+const mongoose = require('mongoose')
+const UserActivity = require('./schemas/UserActivity')
 
 const app = express()
 connect()
@@ -170,6 +176,150 @@ app.get('/paginatedPost/:userID' , async(req , res) => {
     const post = await Post.find({user: userID}).limit(1).skip(page).populate("user")
 
     return res.status(200).json({msg: "Post found" , post})
+})
+
+app.post('/createOrder' , async (req , res) => {
+    const order = req.body
+    const newOrder = await Order.create(order)
+
+    return res.status(200).json({msg: "New Order" , newOrder})
+})
+
+// lookup query in aggregation pipeline
+app.get('/getOrder' , async(req , res) => {
+    const orderWithUser = await Order.aggregate([
+        {$lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            as: "orderDetails"
+        }},
+        // unwind query to flatten the array
+        {$unwind: "$orderDetails"}
+    ])
+
+    return res.status(200).json({msg: "Order with details is here" , orderWithUser})
+})
+
+app.post('/createOrderItems' , async (req , res) => {
+    const orderItems = req.body
+    const newOrderItem = await orderitems.create(orderItems)
+
+    return res.status(200).json({msg: "New order item created" , newOrderItem})
+})
+
+// Nested queries with group based on per product
+app.get('/topOrderItems' , async (req , res) => {
+    const topOrderItems = await orderitems.aggregate([
+        {$group: {_id: '$product' , totalSold: {$sum: '$quantity'}}},
+        {$sort: {totalSold: -1}},
+        {$limit: 3}
+    ])
+
+    res.status(200).json({msg: "Top 3 order items" , topOrderItems})
+})
+
+app.post('/messageWithWord' , async(req , res) => {
+    const message = req.body
+
+    const newMessage = await Message.create(message)
+
+    return res.status(200).json({msg: "New message is formed", newMessage})
+})
+
+// text and search query with meta relevance score priority
+app.get('/messageWithWord/:word' , async(req , res) => {
+    const word = req.params.word
+    console.log(typeof word)
+    const message = await Message.aggregate([
+        {$match: {$text: {$search: word}}},
+        {$project: {title: 1 , content: 1, score: {$meta: "textScore"}}},
+        {$sort: {score: -1}}
+    ])
+
+    return res.status(200).json({msg: "Here is the returned message", message})
+})
+
+app.post('/createMoneyUser' , async (req, res) => {
+    const moneyUser = req.body
+
+    const newUser = await MoneyUsers.create(moneyUser)
+
+    return res.status(200).json({msg: "New money user is created" , newUser})
+})
+
+app.post('/transaction', async (req, res) => {
+  const { senderId, amount, receiverName } = req.body;
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    // Step 1: Load sender document inside the session
+    const sender = await MoneyUsers.findById(senderId).session(session);
+
+    if (!sender) {
+      throw new Error("Sender not found");
+    }
+
+    // Step 2: Check if sender has enough balance
+    if (sender.balance < amount) {
+      throw new Error("Insufficient balance");
+    }
+
+    // Step 3: Load receiver document
+    const receiver = await MoneyUsers.findOne({ name: receiverName }).session(session);
+
+    if (!receiver) {
+      throw new Error("Receiver not found");
+    }
+
+    // Step 4: Deduct from sender
+    await MoneyUsers.updateOne(
+      { _id: senderId },
+      { $inc: { balance: -amount } },
+      { session }
+    );
+
+    // Step 5: Add to receiver
+    await MoneyUsers.updateOne(
+      { _id: receiver._id },
+      { $inc: { balance: amount } },
+      { session }
+    );
+
+    // Step 6: Commit
+    await session.commitTransaction();
+
+    return res.json({ msg: "Transaction Complete" });
+  } catch (err) {
+    await session.abortTransaction();
+    return res.status(400).json({
+      msg: "Couldn't complete the transaction",
+      error: err.message
+    });
+  } finally {
+    session.endSession();
+  }
+});
+
+app.post('/userActivity' , async (req , res) => {
+    const userActivity = req.body
+    const newUserActivity = await UserActivity.create(userActivity)
+
+    return res.status(200).json({msg: "New user activity added" , newUserActivity})
+})
+
+// Multiple complex queries with match , group , sort and limit
+app.get('/userActivity' , async (req , res) => {
+    const userActivity = await UserActivity.aggregate([
+        {$match: {action: "login"}},
+        {$group: {_id: '$userId', totalLogins: {$sum: 1}}},
+        {$sort: {totalLogins: -1}},
+        {$limit: 1}
+    ])
+
+    res.status(200).json({msg: "Most active user details" , userActivity})
 })
 
 app.listen(3000 , () => {

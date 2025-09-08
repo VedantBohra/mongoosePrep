@@ -1,6 +1,6 @@
-# 🟢 Medium Level – MongoDB + Mongoose CRUD
+# 🟢 Hard Level – MongoDB + Mongoose CRUD
 
-This section covers the intermediate level of **Relationships, aggregation pipeline, indexing for faster queries,and pagination**.
+This section covers the hard level of **Advanced queries on aggregation pipeline , transactions and text index search**.
 
 ---
 
